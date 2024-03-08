@@ -3,7 +3,7 @@ lore.kernel.org query reader in [Neo]Mutt.
 
 ## Usage
 ```shell
-lore --help OR commitish OR lore search query
+lore --help OR committish OR lore search query
 ```
 
 ## Requirements

@@ -24,12 +24,12 @@ show_help() {
 	[ $# -eq 0 ] || echo 2>^1 "Error: argument required"
 
 	cat >&2 <<"EOF"
-Usage: lore [options] [commitish or query]
+Usage: lore [options] [committish or query]
 
-Default search is by patchid of referenced commitish (full threads).
+Default search is by patchid of referenced committish (full threads).
 If argument contains ':' it's same as --query specified (no threads).
 
-  -s, --subject    search by commitish's subject line (no threads).
+  -s, --subject    search by committish's subject line (no threads).
   -q, --query      raw search questy with below query language (no threads).
   -t, --thread     (force) return full threads (it's belong to).
   -r, --results    (force) return of matched results only (no threads).
