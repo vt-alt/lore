@@ -99,6 +99,7 @@ for opt; do
 		--no-muttrc) muttrc=() ;;
 		--rev*) sort=reverse-threads ;;
 		--no-cache) no_cache=y ;;
+		--download) reader="echo + $reader" ;;
 		-*) echo "unknown option: $opt"; exit 1 ;;
 		*) set -- "$@" "$opt" ;;
 	esac
