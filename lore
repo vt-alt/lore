@@ -9,7 +9,7 @@ set -euf -o pipefail
 
 dedup=y
 search=patchid
-unset mode force_mode tags qprefix
+unset mode force_mode tags qprefix no_cache
 muttrc=(-F muttrc)
 curlopts=()
 sort=threads
@@ -98,6 +98,7 @@ for opt; do
 		--insecure) curlopts+=(--insecure) ;;
 		--no-muttrc) muttrc=() ;;
 		--rev*) sort=reverse-threads ;;
+		--no-cache) no_cache=y ;;
 		-*) echo "unknown option: $opt"; exit 1 ;;
 		*) set -- "$@" "$opt" ;;
 	esac
@@ -170,17 +171,27 @@ queryopts="q=$query"
 queryopts+="&x=m" # mbox download
 [ -n "$limit" ] && queryopts+="&l=$limit"
 
-tmp=$(mktemp -d --tmpdir lore.XXXXXXXXXX)
-cd "$tmp"
-echo "+ cd $tmp"
-(set -x; curl "${curlopts[@]}" -sS -L -f "https://lore.kernel.org/all/?$queryopts" -d "$mode" -o mbox.gz)
-gzip -d mbox.gz
+LOREDIR=${TMPDIR-/tmp}/lore
+mkdir "$LOREDIR" 2>/dev/null || chown "$USER" "$LOREDIR"
+echo "+ cd $LOREDIR"
+cd "$LOREDIR"
+
+queryhash=$(b2sum <<<"'$queryopts' -d '$mode'" | head -64c)
+hmbox=mbox-$queryhash
+if [ -v no_cache ] ||
+   [ ! -e "$hmbox" ] ||
+   [ -n "$(find "$hmbox" -mtime +1)" ]; then
+	(set -x; curl "${curlopts[@]}" -sS -L -f "https://lore.kernel.org/all/?$queryopts" -d "$mode" -o "$hmbox".gz)
+	gzip -df "$hmbox".gz
+fi
 mbox="$subjfn"
 if [ -v dedup ] && type -p formail >/dev/null; then
-	formail -D 16384 idcache -s < mbox > "$mbox"
+	rm -f idcache
+	formail -D 16384 idcache -s < "$hmbox" > "$mbox"
 else
-	mv -- mbox "$mbox"
+	cp --reflink=auto -- "$hmbox" "$mbox"
 fi
+unset hmbox queryhash
 
 cat > muttrc <<EOF
 set from="$(git config user.email)"
@@ -263,5 +274,4 @@ if [ -v committer ]; then
 	color index_author  brightyellow default "~f '$aemail'"
 	EOF
 fi
-$reader "${muttrc[@]}" -f $mbox
-rm -rf "$tmp"
+$reader "${muttrc[@]}" -f "$mbox"
