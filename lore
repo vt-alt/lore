@@ -264,6 +264,4 @@ if [ -v committer ]; then
 	EOF
 fi
 $reader "${muttrc[@]}" -f $mbox
-echo >&2 cd $tmp
-exit 1
 rm -rf "$tmp"
