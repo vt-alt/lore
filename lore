@@ -9,7 +9,7 @@ set -euf -o pipefail
 
 dedup=y
 search=patchid
-unset mode force_mode tags qprefix no_cache
+unset mode force_mode tags qprefix no_cache message_id
 muttrc=(-F muttrc)
 curlopts=()
 sort=threads
@@ -29,6 +29,7 @@ Usage: lore [options] [committish or query]
 
 Default search is by patchid of referenced committish (full threads).
 If argument contains ':' it's same as --query specified (no threads).
+If argument contains '@' it's Message-Id thread request.
 
   -s, --subject    search by committish's subject line (no threads).
   -q, --query      raw search questy with below query language (no threads).
@@ -88,6 +89,7 @@ for opt; do
 		--raw) unset dedup ;;
 		-s | --subject | --subj) search=subject ;;
 		-q | --query) search=query ;;
+		--message-id) search=message-id ;;
 		-f | --file) qprefix=dfn: ;;
 		-F | --fun*) qprefix=dfhh: ;;
 		-t | --thr*) force_mode="x=full+threads" ;;
@@ -108,8 +110,10 @@ done
 [ $# -ne 0 ] || show_help 1
 commit=${1:?committish}
 
-if [[ "$*" =~ : ]]; then
+if [[ "$*" == *:* ]]; then
 	search=query
+elif [[ "$*" == *@* ]]; then
+	search=message-id
 elif [ -v qprefix ]; then
 	search=query
 else
@@ -125,6 +129,7 @@ else
 	done
 fi
 
+unset author aemail committer commemail subjfn subj subjre query mode
 commit_info() {
 	author=$(    git log --format=%an -n1 "$commit" --)
 	aemail=$(    git log --format=%ae -n1 "$commit" --)
@@ -157,7 +162,6 @@ case "$search" in
 		mode="z=results+only"
 		;;
 	query)
-		unset committer
 		query="$(perl -MURI::Escape -e 'print uri_escape($ARGV[0])' "$*")"
 		query=${qprefix-}${query//%20/+}
 		mode="z=results+only"
@@ -165,24 +169,33 @@ case "$search" in
 		subjre=${*#*:}
 		subjre=${subjre//[^[:alnum:]]/.}
 		;;
+	message-id)
+		message_id=$*
+		subjfn=$message_id
+		subjfn=${message_id//[^[:alnum:]]/_}
 esac
 [ -v force_mode ] && mode=$force_mode
 
-queryopts="q=$query"
-queryopts+="&x=m" # mbox download
-[ -n "$limit" ] && queryopts+="&l=$limit"
+if [ -v query ]; then
+	queryopts="q=$query"
+	queryopts+="&x=m" # mbox download
+	[ -n "$limit" ] && queryopts+="&l=$limit"
+	req=( "https://lore.kernel.org/all/?$queryopts" -d "$mode" )
+else
+	req=( "https://lore.kernel.org/all/$message_id/t.mbox.gz" )
+fi
 
 LOREDIR=${TMPDIR-/tmp}/lore
 mkdir "$LOREDIR" 2>/dev/null || chown "$USER" "$LOREDIR"
 echo "+ cd $LOREDIR"
 cd "$LOREDIR"
 
-queryhash=$(b2sum <<<"'$queryopts' -d '$mode'" | head -64c)
+queryhash=$(b2sum <<<"${req[*]}" | head -64c)
 hmbox=mbox-$queryhash
 if [ -v no_cache ] ||
    [ ! -e "$hmbox" ] ||
    [ -n "$(find "$hmbox" -mtime +1)" ]; then
-	(set -x; curl "${curlopts[@]}" -sS -L -f "https://lore.kernel.org/all/?$queryopts" -d "$mode" -o "$hmbox".gz)
+	(set -x; curl "${curlopts[@]}" -sS -L -f "${req[@]}" -o "$hmbox".gz)
 	gzip -df "$hmbox".gz
 fi
 mbox="$subjfn"
@@ -265,8 +278,21 @@ color body     green       default "^[\+]{3} .*"
 color body     cyan        default "^[\+][^\+]+.*"
 color body     red         default "^\-[^\-]+.*"
 color body     brightblue  default "^@@ .*"
-color index_subject brightyellow default "~s '$subjre'"
 EOF
+if [ -v subjre ]; then
+	cat >> muttrc <<-EOF
+	color index_subject brightyellow default "~s '$subjre'"
+	EOF
+fi
+if [ -v message_id ]; then
+	# With threading enabled the subject line can become invisible, so
+	# color additional fields.
+	cat >> muttrc <<-EOF
+	color index_subject brightyellow  default "~i '$message_id'"
+	color index_number  brightyellow  default "~i '$message_id'"
+	color index_size    brightyellow  default "~i '$message_id'"
+	EOF
+fi
 if [ -v committer ]; then
 	cat >> muttrc <<-EOF
 	color index_author  brightgreen  default "~f '$committer'"
