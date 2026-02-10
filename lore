@@ -195,7 +195,7 @@ hmbox=mbox-$queryhash
 if [ -v no_cache ] ||
    [ ! -e "$hmbox" ] ||
    [ -n "$(find "$hmbox" -mtime +1)" ]; then
-	(set -x; curl "${curlopts[@]}" -sS -L -f "${req[@]}" -o "$hmbox".gz)
+	(set -x; curl "${curlopts[@]}" -sS -L -f "${req[@]}" -o "$hmbox".gz) 2> curl.log
 	gzip -df "$hmbox".gz
 fi
 mbox="$subjfn"
